@@ -1,5 +1,5 @@
 # Dominique Luna's implementation
-from __future__ import absolute_import
+
 
 import os
 import re
@@ -19,7 +19,7 @@ def load_task(data_dir, task_id, only_supporting=False):
   test_file = [f for f in files if s in f and 'test' in f][0]
   train_data = get_stories(train_file, only_supporting)
   test_data = get_stories(test_file, only_supporting)
-  print(train_file, test_file)
+  print((train_file, test_file))
   return train_data, test_data
 
 def tokenize(sent):
@@ -56,7 +56,7 @@ def parse_stories(lines, only_supporting=False):
 
       if only_supporting:
         # Only select the related substory
-        supporting = map(int, supporting.split())
+        supporting = list(map(int, supporting.split()))
         substory = [story[i - 1] for i in supporting]
       else:
         # Provide all the substories

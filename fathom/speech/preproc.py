@@ -12,7 +12,7 @@ import logging
 import os
 import fnmatch
 
-from phoneme import timit_phonemes, phoneme2index_list, phoneme2index_dict
+from .phoneme import timit_phonemes, phoneme2index_list, phoneme2index_dict
 
 
 # global config: load from previous saved dataset if True, else recompute
@@ -86,7 +86,7 @@ def dirpath2dataset(dirpath):
   e.g., TIMIT/TRAIN/DR8/MMPM0/SX251.WAV => MMPM0/SX251.WAV
   """
   if not '/' in dirpath:
-    raise Exception, "not a valid TIMIT dirpath"
+    raise Exception("not a valid TIMIT dirpath")
 
   dataset_name = '/'.join(dirpath.split('/')[-2:])
   return dataset_name

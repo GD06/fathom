@@ -7,7 +7,8 @@ import tensorflow as tf
 import numpy as np
 from sklearn import cross_validation
 from fathom.nn import NeuralNetworkModel, default_runstep
-from data_utils import load_task, vectorize_data
+from .data_utils import load_task, vectorize_data
+from functools import reduce
 
 data_dir = "/data/babi/tasks_1-20_v1-2/en/"
 task_id = 1
@@ -113,35 +114,35 @@ class MemNet(NeuralNetworkModel):
 
     self.memory_size = 50
 
-    self.max_story_size = max(map(len, (s for s, _, _ in train + test)))
-    self.mean_story_size = int(np.mean(map(len, (s for s, _, _ in train + test))))
-    self.sentence_size = max(map(len, chain.from_iterable(s for s, _, _ in train + test)))
-    self.query_size = max(map(len, (q for _, q, _ in train + test)))
+    self.max_story_size = max(list(map(len, (s for s, _, _ in train + test))))
+    self.mean_story_size = int(np.mean(list(map(len, (s for s, _, _ in train + test)))))
+    self.sentence_size = max(list(map(len, chain.from_iterable(s for s, _, _ in train + test))))
+    self.query_size = max(list(map(len, (q for _, q, _ in train + test))))
     self.memory_size = min(self.memory_size, self.max_story_size)
     self.vocab_size = len(word_idx) + 1 # +1 for nil word
     self.sentence_size = max(self.query_size, self.sentence_size) # for the position
 
-    print("Longest sentence length", self.sentence_size)
-    print("Longest story length", self.max_story_size)
-    print("Average story length", self.mean_story_size)
+    print(("Longest sentence length", self.sentence_size))
+    print(("Longest story length", self.max_story_size))
+    print(("Average story length", self.mean_story_size))
 
     # train/validation/test sets
     self.S, self.Q, self.A = vectorize_data(train, word_idx, self.sentence_size, self.memory_size)
     self.trainS, self.valS, self.trainQ, self.valQ, self.trainA, self.valA = cross_validation.train_test_split(self.S, self.Q, self.A, test_size=.1) # TODO: randomstate
     self.testS, self.testQ, self.testA = vectorize_data(test, word_idx, self.sentence_size, self.memory_size)
 
-    print(self.testS[0])
+    print((self.testS[0]))
 
-    print("Training set shape", self.trainS.shape)
+    print(("Training set shape", self.trainS.shape))
 
     # params
     self.n_train = self.trainS.shape[0]
     self.n_test = self.testS.shape[0]
     self.n_val = self.valS.shape[0]
 
-    print("Training Size", self.n_train)
-    print("Validation Size", self.n_val)
-    print("Testing Size", self.n_test)
+    print(("Training Size", self.n_train))
+    print(("Validation Size", self.n_val))
+    print(("Testing Size", self.n_test))
 
   def build_hyperparameters(self):
     with self.G.as_default():
@@ -222,7 +223,7 @@ class MemNet(NeuralNetworkModel):
         feed_dict={self.stories: self.testS, self.queries: self.testQ, self.answers: self.testA}
     )
 
-    print("Test accuracy: {:.5f}".format(acc))
+    print(("Test accuracy: {:.5f}".format(acc)))
 
 def position_encoding(sentence_size, embedding_size):
   """

@@ -75,7 +75,7 @@ class AutoencBase(NeuralNetworkModel):
       if self.forward_only:
         self.epochs = 1
 
-      for epoch in xrange(self.epochs):
+      for epoch in range(self.epochs):
         # TODO: re-enable options and metadata, which slow down the run
 
         total_batch = self.mnist.train.num_examples // self.batch_size
@@ -109,9 +109,9 @@ class AutoencBase(NeuralNetworkModel):
           avg_cost += loss_value * self.mnist.train.num_examples * self.batch_size
 
           if epoch % self.display_step == 0:
-            print('epoch:', epoch, 'cost:', avg_cost)
+            print(('epoch:', epoch, 'cost:', avg_cost))
 
-      print("Total cost:", self.calc_total_cost(self.X_test))
+      print(("Total cost:", self.calc_total_cost(self.X_test)))
 
   def noisy_input(self, inputs, scale, dist=tf.random_normal):
     """Add scaled noise to input for denoising autoencoder."""
