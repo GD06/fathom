@@ -5,13 +5,18 @@ import tensorflow as tf
 
 from fathom.nn import GenericModel, default_runstep
 
-from .database import *
-from .emulator import *
+from fathom.deepq.database import *
+from fathom.deepq.emulator import *
+#from .database import *
+#from .emulator import *
 import tensorflow as tf
 import numpy as np
 import time
 import cv2
 import datetime
+
+from cg_profiler.cg_graph import CompGraph
+import os
 
 # TODO: clean up this file
 nature_params = {
@@ -278,7 +283,26 @@ class DeepQ(GenericModel):
         if not self.forward_only:
           Q_pred = self.sess.run(self.qnet.y, feed_dict = {self.qnet.x: np.reshape(st, (1,84,84,4))})[0]
         else:
-          Q_pred = runstep(self.sess, self.qnet.y, feed_dict = {self.qnet.x: np.reshape(st, (1,84,84,4))})[0]
+          options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+          run_metadata = tf.RunMetadata()
+          feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4))}
+
+          Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict,
+                                 options=options, run_metadata=run_metadata)
+          cg = CompGraph('deepq', run_metadata, self.G)
+
+          cg_tensor_dict = cg.get_tensors()
+          cg_sorted_keys = sorted(cg_tensor_dict.keys())
+          cg_sorted_items = []
+          for cg_key in cg_sorted_keys:
+            cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+          cg_sorted_shape = self.sess.run(cg_sorted_items, feed_dict=feed_dict)
+          cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                         'deepq.pickle', dir_name='fathom')
+
+          #Q_pred = runstep(self.sess, self.qnet.y, feed_dict = {self.qnet.x: np.reshape(st, (1,84,84,4))})[0]
+          exit(0)
 
         a_winner = np.argwhere(Q_pred == np.amax(Q_pred))
         if len(a_winner) > 1:
@@ -433,6 +457,7 @@ class DeepQFwd(DeepQ):
 
 if __name__=='__main__':
   m = DeepQ()
+  m.forward_only = True
   m.setup()
   m.run(runstep=default_runstep, n_steps=100)
   m.teardown()

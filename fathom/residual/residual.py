@@ -185,5 +185,6 @@ class ResidualFwd(Residual):
 if __name__ == "__main__":
   m = Residual()
   m.setup()
-  m.run(runstep=default_runstep, n_steps=10)
+  m.forward_only = True
+  m.run(runstep=default_runstep, n_steps=10, model_name='residual')
   m.teardown()

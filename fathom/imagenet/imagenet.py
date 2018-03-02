@@ -6,8 +6,12 @@ from fathom.nn import NeuralNetworkModel, default_runstep
 from fathom.dataset import Dataset
 from fathom.imagenet.image_processing import distorted_inputs
 
+import os
+from cg_profiler.cg_graph import CompGraph
+
 # TODO: don't hard-code this
-imagenet_record_dir = '/data/ILSVRC2012/imagenet-tfrecord/'
+#imagenet_record_dir = '/data/ILSVRC2012/imagenet-tfrecord/'
+imagenet_record_dir = os.path.join(os.getenv('DATA_INPUT_DIR'), 'imagenet')
 
 class Imagenet(Dataset):
   """Design from TensorFlow Inception example."""
@@ -55,7 +59,7 @@ class ImagenetModel(NeuralNetworkModel):
       self.images = tf.placeholder(tf.float32, [None, self.image_size, self.image_size, self.channels])
 
       # add queue runners (evaluation dequeues records)
-      self.dataset = Imagenet('train')
+      self.dataset = Imagenet('validation')
       self.batch_images_queue, self.batch_labels_queue = distorted_inputs(self.dataset, batch_size=self.batch_size)
 
   def build_labels(self):
@@ -72,7 +76,7 @@ class ImagenetModel(NeuralNetworkModel):
     with self.G.as_default():
       self.learning_rate = 0.001
       self.training_iters = 200000
-      self.batch_size = 64
+      self.batch_size = 1
       self.display_step = 1
 
       self.dropout = 0.8 # Dropout, probability to keep units
@@ -101,8 +105,9 @@ class ImagenetModel(NeuralNetworkModel):
     # Grab the dataset from the internet, if necessary
     self.num_batches_per_epoch = self.dataset.num_examples_per_epoch() / self.batch_size
 
-  def run(self, runstep=default_runstep, n_steps=1):
+  def run(self, runstep=default_runstep, n_steps=1, model_name='imagenet_model'):
     self.load_data()
+    print('Model name: {}'.format(model_name))
 
     with self.G.as_default():
       # Keep training until reach max iterations
@@ -126,11 +131,32 @@ class ImagenetModel(NeuralNetworkModel):
           if step % self.display_step == 0:
             print("Iter " + str(step*self.batch_size) + ", Minibatch Loss= " + "{:.6f}".format(loss_value) + ", Training Accuracy= " + "{:.5f}".format(acc))
         else:
-          _ = runstep(
-              self.session,
-              self.outputs,
-              feed_dict={self.images: batch_images, self._labels: batch_labels, self.keep_prob: 1.},
-          )
+          options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+          run_metadata = tf.RunMetadata()
+          feed_dict = {self.images: batch_images,
+                       self.labels: batch_labels,
+                       self.keep_prob: 1.0}
+
+          _ = self.session.run(self.outputs, feed_dict=feed_dict,
+                               options=options, run_metadata=run_metadata)
+          cg = CompGraph(model_name, run_metadata, self.G)
+
+          cg_tensor_dict = cg.get_tensors()
+          cg_sorted_keys = sorted(cg_tensor_dict.keys())
+          cg_sorted_items = []
+          for cg_key in cg_sorted_keys:
+              cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+          cg_sorted_shape = self.session.run(cg_sorted_items, feed_dict=feed_dict)
+          cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                         '{}.pickle'.format(model_name), dir_name='fathom')
+
+          #_ = runstep(
+          #    self.session,
+          #    self.outputs,
+          #    feed_dict={self.images: batch_images, self._labels: batch_labels, self.keep_prob: 1.},
+
+          exit(0)
 
         step += 1
 

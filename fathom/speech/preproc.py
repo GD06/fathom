@@ -12,19 +12,22 @@ import logging
 import os
 import fnmatch
 
-from .phoneme import timit_phonemes, phoneme2index_list, phoneme2index_dict
-
+from fathom.speech.phoneme import timit_phonemes, phoneme2index_list, phoneme2index_dict
+from tqdm import tqdm
+import pickle
 
 # global config: load from previous saved dataset if True, else recompute
 load_features = False
 
 # TODO: configurable path to /data/speech/timit/
-timit_dir = '/data/speech/timit/TIMIT/'
-timit_hdf5_filepath = '/data/speech/timit/timit.hdf5'
+#timit_dir = '/data/speech/timit/TIMIT/'
+#timit_hdf5_filepath = '/data/speech/timit/timit.hdf5'
+timit_dir = '/home/xinfeng/timit/'
+timit_hdf5_filepath = '/home/xinfeng/timit/timit.hdf5'
 
 train_name, test_name = 'train', 'test'
-train_dir = os.path.join(timit_dir, train_name.upper())
-test_dir = os.path.join(timit_dir, test_name.upper())
+train_dir = os.path.join(timit_dir, train_name)
+test_dir = os.path.join(timit_dir, test_name)
 
 
 # simple logging
@@ -66,7 +69,7 @@ def mfcc_features(filename):
   mfccs = librosa.feature.mfcc(d, sr, n_mfcc=1+12, n_fft=int(frame_overlap_seconds*sr), hop_length=int(frame_overlap_seconds*sr))
 
   # energy (TODO: log?)
-  energy = librosa.feature.rmse(d, n_fft=int(frame_overlap_seconds*sr), hop_length=int(frame_overlap_seconds*sr))
+  energy = librosa.feature.rmse(y=d, frame_length=int(frame_overlap_seconds*sr), hop_length=int(frame_overlap_seconds*sr))
 
   mfccs[0] = energy # replace first MFCC with energy, per convention
 
@@ -113,7 +116,7 @@ def verify_phonemes(timit_phoneme_set, transcription_phoneme_set):
 def compute_spectrograms(audio_filenames):
   """Extract spectrogram features from each audio file."""
   features_list = []
-  audio_ext = ".WAV"
+  audio_ext = ".wav"
 
   for audio_basename in audio_filenames:
     # recompute spectrogram features
@@ -180,7 +183,9 @@ def save_feature_dataset(audio_filenames, spectrograms, seq_lens, phoneme2index_
 
     for subset_kind, subset_dataset in [(train_name, train), (test_name, test)]:
       # (n_examples,)
-      subset_dataset.create_dataset('example_paths', dtype="S100", data=np.array(audio_filenames[subset_kind]))
+      conv_filenames = [x.encode('utf-8') for x in audio_filenames[subset_kind]]
+      subset_dataset.create_dataset('example_paths', dtype="S100", data=np.array(conv_filenames))
+      #subset_dataset.create_dataset('example_paths', dtype="S100", data=np.array(audio_filenames[subset_kind]))
 
       # (n_examples, max_frames, n_coeffs)
       subset_dataset.create_dataset('spectrograms', data=spectrograms[subset_kind])
@@ -230,7 +235,7 @@ def load_transcriptions(audio_filenames):
 
   Each phoneme transcription is a list of phonemes without time alignments.
   """
-  phoneme_ext = ".PHN"
+  phoneme_ext = ".phn"
   transcriptions = []
   for audio_basename in tqdm(audio_filenames):
     # obtain list of phonemes, discarding time-alignment
@@ -260,7 +265,7 @@ if __name__ == "__main__":
   labels = {}
 
   for subset_kind, subset_dir in [(train_name, train_dir), (test_name, test_dir)]:
-    subset_audio_filenames = recursive_glob_ext(subset_dir, ext="WAV")
+    subset_audio_filenames = recursive_glob_ext(subset_dir, ext="wav")
 
     logger.info("Loading phoneme transcriptions for {}...".format(subset_kind))
     subset_transcriptions = load_transcriptions(subset_audio_filenames)

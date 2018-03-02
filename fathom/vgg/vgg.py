@@ -122,5 +122,6 @@ class VGGFwd(VGG):
 if __name__ == "__main__":
   m = VGG()
   m.setup()
-  m.run(runstep=default_runstep, n_steps=10)
+  m.forward_only = True
+  m.run(runstep=default_runstep, n_steps=10, model_name='vgg')
   m.teardown()

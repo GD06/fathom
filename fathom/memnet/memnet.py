@@ -7,10 +7,14 @@ import tensorflow as tf
 import numpy as np
 from sklearn import cross_validation
 from fathom.nn import NeuralNetworkModel, default_runstep
-from .data_utils import load_task, vectorize_data
+from fathom.memnet.data_utils import load_task, vectorize_data
 from functools import reduce
 
-data_dir = "/data/babi/tasks_1-20_v1-2/en/"
+import os
+from cg_profiler.cg_graph import CompGraph
+
+#data_dir = "/data/babi/tasks_1-20_v1-2/en/"
+data_dir = os.path.join(os.getenv('DATA_INPUT_DIR'), 'memnet/en/')
 task_id = 1
 
 class MemNet(NeuralNetworkModel):
@@ -206,11 +210,29 @@ class MemNet(NeuralNetworkModel):
             feed_dict=feed,
         )
       else:
-        _ = runstep(
-            self.session,
-            self.outputs,
-            feed_dict=feed,
-        )
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+
+        _ = self.session.run(self.outputs, feed_dict=feed,
+                             options=options, run_metadata=run_metadata)
+        cg = CompGraph('memnet', run_metadata, self.G)
+
+        cg_tensor_dict = cg.get_tensors()
+        cg_sorted_keys = sorted(cg_tensor_dict.keys())
+        cg_sorted_items = []
+        for cg_key in cg_sorted_keys:
+          cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+        cg_sorted_shape = self.session.run(cg_sorted_items, feed_dict=feed)
+        cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                       'memnet.pickle', dir_name='fathom')
+
+        #_ = runstep(
+        #    self.session,
+        #    self.outputs,
+        #    feed_dict=feed,
+        #)
+        exit(0)
 
       # FIXME: Should really be shuffling here.
       if end+self.batch_size>self.n_train:
@@ -267,6 +289,7 @@ class MemNetFwd(MemNet):
 
 if __name__=='__main__':
   m = MemNet()
+  m.forward_only = True
   m.setup()
   m.run(runstep=default_runstep, n_steps=100)
   m.teardown()

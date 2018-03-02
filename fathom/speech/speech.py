@@ -6,13 +6,16 @@ import tensorflow as tf
 #from tensorflow.models.rnn import rnn, rnn_cell
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.contrib.rnn.python.ops.rnn_cell import _linear
+from tensorflow.contrib.rnn.python.ops.rnn_cell import _Linear
 
 from fathom.nn import NeuralNetworkModel, default_runstep
 
-from .preproc import load_timit, timit_hdf5_filepath
-from .phoneme import index2phoneme_dict
+from fathom.speech.preproc import load_timit, timit_hdf5_filepath
+from fathom.speech.phoneme import index2phoneme_dict
 
+import os
+import pickle
+from cg_profiler.cg_graph import CompGraph
 
 def clipped_relu(inputs, clip=20):
   """Similar to tf.nn.relu6, but can clip at 20 as in Deep Speech."""
@@ -36,7 +39,9 @@ class ClippedReluRNNCell(tf.contrib.rnn.RNNCell):
   def __call__(self, inputs, state, scope=None):
     """Basic RNN: output = new_state = clipped_relu(W * input + U * state + B)."""
     with vs.variable_scope(scope or type(self).__name__):
-      output = clipped_relu(_linear([inputs, state], self._num_units, True))
+      linear_func = _Linear([inputs, state], self._num_units, True)
+      output = clipped_relu(linear_func([inputs, state]))
+      #output = clipped_relu(_Linear([inputs, state], self._num_units, True))
     return output, output
 
 
@@ -167,12 +172,13 @@ class Speech(NeuralNetworkModel):
 
   def build_hyperparameters(self):
     self.n_labels = 61 + 1 # add blank
-    self.max_frames = 1566 # TODO: compute dynamically
+    self.max_frames = 1562 # TODO: compute dynamically
     self.max_labels = 75
     self.n_coeffs = 26
-    self.batch_size = 32
+    #self.batch_size = 32
     if self.init_options:
       self.batch_size = self.init_options.get('batch_size', self.batch_size)
+    self.batch_size = 1
 
   def build_inputs(self):
     with self.G.as_default():
@@ -200,7 +206,20 @@ class Speech(NeuralNetworkModel):
       self.decode_op = self.decoding()
 
   def load_data(self):
-    self.train_spectrograms, self.train_labels, self.train_seq_lens = load_timit(timit_hdf5_filepath, train=True)
+    #self.train_spectrograms, self.train_labels, self.train_seq_lens = load_timit(timit_hdf5_filepath, train=True)
+    pkl_dir = os.path.join(os.getenv('DATA_INPUT_DIR'), 'speech')
+    #with open(os.path.join(pkl_dir, 'train_spectrograms.pkl'), 'wb') as f:
+    #  pickle.dump(self.train_spectrograms, f)
+    #with open(os.path.join(pkl_dir,  'train_labels.pkl'), 'wb') as f:
+    #  pickle.dump(self.train_labels, f)
+    #with open(os.path.join(pkl_dir, 'train_seq_lens.pkl'), 'wb') as f:
+    #  pickle.dump(self.train_seq_lens, f)
+    with open(os.path.join(pkl_dir, 'train_spectrograms.pkl'), 'rb') as f:
+      self.train_spectrograms = pickle.load(f)
+    with open(os.path.join(pkl_dir, 'train_labels.pkl'), 'rb') as f:
+      self.train_labels = pickle.load(f)
+    with open(os.path.join(pkl_dir, 'train_seq_lens.pkl'), 'rb') as f:
+      self.train_seq_lens = pickle.load(f)
     # TODO: load test
 
   def get_random_batch(self):
@@ -231,10 +250,31 @@ class Speech(NeuralNetworkModel):
               [self.train_op, self.loss_op],
               feed_dict={self.inputs: spectrogram_batch, self.labels: label_batch, self.seq_lens: seq_len_batch})
         else:
+          print('Here.')
+
+          options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+          run_metadata = tf.RunMetadata()
+          feed_dict = {self.inputs: spectrogram_batch, self.labels: label_batch,
+                       self.seq_lens: seq_len_batch}
+
+          _ = self.session.run(self.outputs, feed_dict=feed_dict,
+                               options=options, run_metadata=run_metadata)
+          cg = CompGraph('speech', run_metadata, self.G)
+
+          cg_tensor_dict = cg.get_tensors()
+          cg_sorted_keys = sorted(cg_tensor_dict.keys())
+          cg_sorted_items = []
+          for cg_key in cg_sorted_keys:
+            cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+          cg_sorted_shape = self.session.run(cg_sorted_items, feed_dict=feed_dict)
+          cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                         'speech.pickle', dir_name='fathom')
           # run forward-only on train batch
-          _ = runstep(self.session,
-              self.outputs,
-              feed_dict={self.inputs: spectrogram_batch, self.labels: label_batch, self.seq_lens: seq_len_batch})
+          #_ = runstep(self.session,
+          #    self.outputs,
+          #    feed_dict={self.inputs: spectrogram_batch, self.labels: label_batch, self.seq_lens: seq_len_batch})
+          return
 
         # decode the same batch, for debugging
         decoded = self.session.run(self.decode_op,
@@ -254,7 +294,7 @@ class SpeechFwd(Speech):
   forward_only = True
 
 if __name__=='__main__':
-  m = Speech()
+  m = SpeechFwd()
   m.setup()
   m.run(runstep=default_runstep, n_steps=10)
   m.teardown()

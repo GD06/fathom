@@ -7,6 +7,8 @@ import tensorflow as tf
 from fathom.nn import NeuralNetworkModel, default_runstep
 import fathom.imagenet.mnist as input_data
 
+import os
+from cg_profiler.cg_graph import CompGraph
 
 # TODO: create an unsupervised parent class
 
@@ -21,15 +23,16 @@ class AutoencBase(NeuralNetworkModel):
   """Basic Autoencoder (denoising optional)."""
   def load_data(self):
     # Grab the dataset from the internet, if necessary
-    self.mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+    tmp_dir_path = os.path.join(os.getenv('LOG_OUTPUT_DIR'), 'tmp')
+    self.mnist = input_data.read_data_sets(tmp_dir_path, one_hot=True)
     self.X_train, self.X_test = standard_scale(self.mnist.train.images, self.mnist.test.images)
 
   def build_hyperparameters(self):
     # Parameters
     self.learning_rate = 0.001
-    self.batch_size = 128
     if self.init_options:
       self.batch_size = self.init_options.get('batch_size', self.batch_size)
+    self.batch_size = 1
     self.display_step = 1
 
     # Network Parameters
@@ -64,7 +67,7 @@ class AutoencBase(NeuralNetworkModel):
     # inputs are the ground truth
     return self.inputs
 
-  def run(self, runstep=None, n_steps=1):
+  def run(self, runstep=None, n_steps=1, model_name='autoenc'):
     self.load_data()
 
     with self.G.as_default():
@@ -99,11 +102,30 @@ class AutoencBase(NeuralNetworkModel):
             )
           else:
             # run forward on train batch
-            _ = runstep(
-                self.session,
-                self.outputs,
-                feed_dict={self.xs: batch_xs}
-            )
+            options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
+            feed_dict={self.xs: batch_xs, self.scale: self.training_scale}
+
+            _ = self.session.run(self.outputs, feed_dict=feed_dict,
+                                 options=options, run_metadata=run_metadata)
+            cg = CompGraph(model_name, run_metadata, self.G)
+
+            cg_tensor_dict = cg.get_tensors()
+            cg_sorted_keys = sorted(cg_tensor_dict.keys())
+            cg_sorted_items = []
+            for cg_key in cg_sorted_keys:
+              cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+            cg_sorted_shape = self.session.run(cg_sorted_items,
+                                               feed_dict=feed_dict)
+            cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                           '{}.pickle'.format(model_name), dir_name='fathom')
+            exit(0)
+            #_ = runstep(
+            #    self.session,
+            #    self.outputs,
+            #    feed_dict={self.xs: batch_xs}
+            #)
 
         if not self.forward_only:
           avg_cost += loss_value * self.mnist.train.num_examples * self.batch_size
@@ -202,6 +224,7 @@ class AutoencBaseFwd(AutoencBase):
 
 if __name__ == "__main__":
   m = AutoencBase()
+  m.forward_only = True
   m.setup()
   m.run(runstep=default_runstep)
   m.teardown()

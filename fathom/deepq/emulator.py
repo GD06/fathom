@@ -6,18 +6,21 @@ from ale_python_interface import ALEInterface
 import cv2
 import time
 
-ROM_PATH = 'fathom/deepq/roms/'
+import os
+
+ROM_PATH = os.path.join(os.getenv('DATA_INPUT_DIR'), 'deepq/')
+#ROM_PATH = '/root/fathom/fathom/deepq/roms/'
 
 class emulator(object):
   def __init__(self, rom_name, vis,frameskip=1,windowname='preview'):
     self.ale = ALEInterface()
-    self.max_frames_per_episode = self.ale.getInt("max_num_frames_per_episode");
-    self.ale.setInt("random_seed",123)
-    self.ale.setInt("frame_skip",frameskip)
+    self.max_frames_per_episode = self.ale.getInt(b'max_num_frames_per_episode')
+    self.ale.setInt(b"random_seed", 123)
+    self.ale.setInt(b"frame_skip", frameskip)
     romfile = str(ROM_PATH)+str(rom_name)
     if not os.path.exists(romfile):
       print('No ROM file found at "'+romfile+'".\nAdjust ROM_PATH or double-check the filt exists.')
-    self.ale.loadROM(romfile)
+    self.ale.loadROM(romfile.encode())
     self.legal_actions = self.ale.getMinimalActionSet()
     self.action_map = dict()
     self.windowname = windowname

@@ -9,7 +9,12 @@ import time
 
 from fathom.nn import NeuralNetworkModel, default_runstep
 
-from . import data_utils
+import data_utils
+#import fathom.seq2seq.data_utils as data_utils
+
+import os
+import pickle
+from cg_profiler.cg_graph import CompGraph
 
 class Seq2Seq(NeuralNetworkModel):
   """Based on TensorFlow example of sequence-to-sequence translation."""
@@ -153,25 +158,44 @@ class Seq2Seq(NeuralNetworkModel):
 
   def load_data(self):
     # TODO: make configurable
-    self.data_dir = "/data/WMT15/"
+    #self.data_dir = os.path.join(os.getenv('LOG_OUTPUT_DIR'), 'tmp')
+    #self.data_dir = "/data/WMT15/"
+    self.data_dir = "/home/xinfeng/WMT15/"
+    pkl_dir_path = os.path.join(os.getenv('DATA_INPUT_DIR'), 'seq2seq')
 
-    print(("Preparing WMT data in %s" % self.data_dir))
-    en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-        self.data_dir, self.en_vocab_size, self.fr_vocab_size)
+    with open(os.path.join(pkl_dir_path, 'dev_set.pkl'), 'rb') as f:
+      self.dev_set = pickle.load(f)
+    with open(os.path.join(pkl_dir_path, 'train_set.pkl'), 'rb') as f:
+      self.train_set = pickle.load(f)
+    with open(os.path.join(pkl_dir_path, 'train_buckets_scale.pkl'), 'rb') as f:
+      self.train_buckets_scale = pickle.load(f)
+
+    #print(("Preparing WMT data in %s" % self.data_dir))
+    #en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
+    #    self.data_dir, self.en_vocab_size, self.fr_vocab_size)
 
     # Read data into buckets and compute their sizes.
-    print(("Reading development and training data (limit: %d)."
-           % self.max_train_data_size))
-    self.dev_set = self.read_data(en_dev, fr_dev)
-    self.train_set = self.read_data(en_train, fr_train, self.max_train_data_size)
-    train_bucket_sizes = [len(self.train_set[b]) for b in range(len(self._buckets))]
-    train_total_size = float(sum(train_bucket_sizes))
+    #print(("Reading development and training data (limit: %d)."
+    #       % self.max_train_data_size))
+    #self.dev_set = self.read_data(en_dev, fr_dev)
+    #self.train_set = self.read_data(en_train, fr_train, self.max_train_data_size)
+    #train_bucket_sizes = [len(self.train_set[b]) for b in range(len(self._buckets))]
+    #train_total_size = float(sum(train_bucket_sizes))
 
     # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
     # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
     # the size if i-th training bucket, as used later.
-    self.train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
-                           for i in range(len(train_bucket_sizes))]
+    #self.train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
+    #                       for i in range(len(train_bucket_sizes))]
+
+    #with open(os.path.join(pkl_dir_path, 'dev_set.pkl'), 'wb') as f:
+    #  pickle.dump(self.dev_set, f)
+
+    #with open(os.path.join(pkl_dir_path, 'train_set.pkl'), 'wb') as f:
+    #  pickle.dump(self.train_set, f)
+
+    #with open(os.path.join(pkl_dir_path, 'train_buckets_scale.pkl'), 'wb') as f:
+    #  pickle.dump(self.train_buckets_scale, f)
 
   def read_data(self, source_path, target_path, max_size=None):
     """Read data from source and target files and put into buckets.
@@ -232,9 +256,9 @@ class Seq2Seq(NeuralNetworkModel):
     self.num_layers = 3
     self.use_lstm = True # else GRU
 
-    self.batch_size = 64
     if self.init_options:
       self.batch_size = self.init_options.get('batch_size', self.batch_size)
+    self.batch_size = 1
 
     self.display_step = 1
     self.global_step = tf.Variable(0, trainable=False)
@@ -268,12 +292,28 @@ class Seq2Seq(NeuralNetworkModel):
       output_feeds, input_feeds = self.step_feeds(encoder_inputs, decoder_inputs,
                                    target_weights, bucket_id, self.forward_only)
 
-      outputs = runstep(
-        self.session,
-        output_feeds,
-        input_feeds,
+      options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      run_metadata = tf.RunMetadata()
+      outputs = self.session.run(output_feeds, feed_dict=input_feeds,
+                                 options=options, run_metadata=run_metadata)
+      cg = CompGraph('seq2seq', run_metadata, self.G)
+
+      cg_tensor_dict = cg.get_tensors()
+      cg_sorted_keys = sorted(cg_tensor_dict.keys())
+      cg_sorted_items = []
+      for cg_key in cg_sorted_keys:
+        cg_sorted_items.append(tf.shape(cg_tensor_dict[cg_key]))
+
+      cg_sorted_shape = self.session.run(cg_sorted_items, feed_dict=input_feeds)
+      cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
+                     'seq2seq.pickle', dir_name='fathom')
+      return
+      #outputs = runstep(
+      #  self.session,
+      #  output_feeds,
+      #  input_feeds,
         #options=run_options, run_metadata=values
-      )
+      #)
 
       # TODO: do this in a runstep
       if not self.forward_only:
@@ -453,7 +493,7 @@ class Seq2SeqFwd(Seq2Seq):
   forward_only = True
 
 if __name__=='__main__':
-  m = Seq2Seq()
+  m = Seq2SeqFwd()
   m.setup()
   m.run(runstep=default_runstep, n_steps=10)
   m.teardown()
