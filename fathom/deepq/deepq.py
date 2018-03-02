@@ -301,8 +301,8 @@ class DeepQ(GenericModel):
           cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
                          'deepq.pickle', dir_name='fathom')
 
+          return
           #Q_pred = runstep(self.sess, self.qnet.y, feed_dict = {self.qnet.x: np.reshape(st, (1,84,84,4))})[0]
-          exit(0)
 
         a_winner = np.argwhere(Q_pred == np.amax(Q_pred))
         if len(a_winner) > 1:
@@ -413,7 +413,10 @@ class DeepQ(GenericModel):
             self.epi_reward_eval = 0
           continue
 
-        self.action_idx,self.action, self.maxQ = self.select_action(self.state_proc, runstep=runstep)
+        _ = self.select_action(self.state_proc, runstep=runstep)
+        return
+        #self.action_idx,self.action, self.maxQ = self.select_action(self.state_proc, runstep=runstep)
+        self.state, self.reward, self.terminal = self.engine.next(self.action)
         self.state, self.reward, self.terminal = self.engine.next(self.action)
         self.reward_scaled = self.reward // max(1,abs(self.reward))
         if not self.forward_only : self.epi_reward_train += self.reward ; self.total_Q_train += self.maxQ

@@ -227,12 +227,12 @@ class MemNet(NeuralNetworkModel):
         cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
                        'memnet.pickle', dir_name='fathom')
 
+        return
         #_ = runstep(
         #    self.session,
         #    self.outputs,
         #    feed_dict=feed,
         #)
-        exit(0)
 
       # FIXME: Should really be shuffling here.
       if end+self.batch_size>self.n_train:

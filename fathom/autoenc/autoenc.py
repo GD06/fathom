@@ -120,7 +120,7 @@ class AutoencBase(NeuralNetworkModel):
                                                feed_dict=feed_dict)
             cg.op_analysis(dict(zip(cg_sorted_keys, cg_sorted_shape)),
                            '{}.pickle'.format(model_name), dir_name='fathom')
-            exit(0)
+            return
             #_ = runstep(
             #    self.session,
             #    self.outputs,

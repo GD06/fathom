@@ -156,7 +156,7 @@ class ImagenetModel(NeuralNetworkModel):
           #    self.outputs,
           #    feed_dict={self.images: batch_images, self._labels: batch_labels, self.keep_prob: 1.},
 
-          exit(0)
+          return
 
         step += 1
 
